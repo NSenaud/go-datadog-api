@@ -14,6 +14,7 @@ import (
 	"net/url"
 	"strconv"
 	"strings"
+	"time"
 )
 
 type Period struct {
@@ -254,4 +255,54 @@ func (client *Client) UnmuteMonitor(id int) error {
 // UnmuteMonitorScopes is similar to UnmuteMonitor, but provides finer-grained control to unmuting
 func (client *Client) UnmuteMonitorScopes(id int, unmuteMonitorScopes *UnmuteMonitorScopes) error {
 	return client.doJsonRequest("POST", fmt.Sprintf("/v1/monitor/%d/unmute", id), unmuteMonitorScopes, nil)
+}
+
+// ResourceHistory
+type ResourceHistory struct {
+	MonitorID uint   `json:"monitor_id"`
+	Group     string `json:"group"`
+	State     int    `json:"state"`
+	OrgID     uint   `json:"org_id"`
+	Date      int    `json:"date"`
+}
+
+// Resource
+type Resource struct {
+	Status        string            `json:"status"`
+	ListTriggered int               `json:"last_triggered_ts"`
+	Name          string            `json:"name,omitempty"`
+	Downtimes     []Downtime        `json:"downtimes"`
+	MonitorID     uint              `json:"monitor_id"`
+	History       []ResourceHistory `json:"history"`
+}
+
+type Count struct {
+	Count *json.Number `json:"count,omitempty"`
+	Name  string       `json:"name,omitempty"`
+}
+
+// reqMonitors receives a slice of all monitors
+type reqResources struct {
+	Counts   []Count      `json:"counts,omitempty"`
+	Total    *json.Number `json:"total,omitempty"`
+	Subtotal *json.Number `json:"subtotal,omitempty"`
+	Groups   []Resource   `json:"groups,omitempty"`
+}
+
+// SearchGroups returns groups of resources associated to monitor.
+func (client *Client) SearchGroups(monitorID int) (resources []Resource, err error) {
+	to := time.Now()
+	from := to.AddDate(0, 0, -1)
+
+	query, err := url.ParseQuery(fmt.Sprintf("from_ts=%v&to_ts=%v", 1000*from.Unix(), 1000*to.Unix()))
+	if err != nil {
+		return nil, err
+	}
+
+	var out reqResources
+	if err := client.doJsonRequest("GET", fmt.Sprintf("/v1/monitor/%d/search_groups?%v", monitorID, query.Encode()), nil, &out); err != nil {
+		return nil, err
+	}
+
+	return out.Groups, nil
 }
